@@ -64,8 +64,6 @@ app.post('/analyze', upload.single('image'), async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-    console.log(`
-伺服器執行中: http://localhost:${PORT}
-請用瀏覽器開啟上述網址
-`);
+    console.log(`伺服器執行中於端口: ${PORT}`);
+});
 });
