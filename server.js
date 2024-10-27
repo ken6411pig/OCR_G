@@ -8,7 +8,7 @@ const app = express();
 
 // CORS 設定
 app.use(cors({
-    origin: '*'  // 開發時允許所有來源
+    origin: '*'
 }));
 
 // 設定靜態檔案
@@ -18,13 +18,13 @@ app.use(express.static('public'));
 const upload = multer({
     storage: multer.memoryStorage(),
     limits: {
-        fileSize: 5 * 1024 * 1024 // 限制 5MB
+        fileSize: 5 * 1024 * 1024
     }
 });
 
 // 建立 Vision 客戶端
 const client = new vision.ImageAnnotatorClient({
-    keyFilename: './config/vision-api-key.json'
+    credentials: JSON.parse(process.env.GOOGLE_CLOUD_CREDENTIALS)
 });
 
 // 首頁路由
@@ -34,16 +34,12 @@ app.get('/', (req, res) => {
 
 // 處理圖片上傳和辨識
 app.post('/analyze', upload.single('image'), async (req, res) => {
-    console.log('收到分析請求');
-    
     try {
         if (!req.file) {
             return res.status(400).json({ error: '未收到圖片' });
         }
 
-        console.log('開始處理圖片...');
         const [result] = await client.textDetection(req.file.buffer);
-        console.log('文字辨識完成');
 
         if (!result.textAnnotations || result.textAnnotations.length === 0) {
             return res.json({ text: '未檢測到文字' });
@@ -62,7 +58,7 @@ app.post('/analyze', upload.single('image'), async (req, res) => {
     }
 });
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
-    console.log(`伺服器執行中於端口: ${PORT}`);
+    console.log(`Server is running on port ${PORT}`);
 });
