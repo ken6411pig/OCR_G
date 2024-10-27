@@ -30,7 +30,10 @@ const client = new vision.ImageAnnotatorClient({
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
-
+// 添加 UTF-8 BOM 的函數
+function addBOM(text) {
+    return '\ufeff' + text;
+}
 // 處理多張圖片上傳和辨識
 app.post('/analyze', upload.array('images', 10), async (req, res) => {
     console.log('收到批次分析請求');
@@ -82,9 +85,9 @@ app.post('/analyze', upload.array('images', 10), async (req, res) => {
             .join('---\n');
         
         await fs.writeFile(
-            path.join(outputDir, summaryFile),
-            summaryContent,
-            'utf8'
+          path.join(outputDir, filename),
+                    addBOM(text),
+                    { encoding: 'utf8' }
         );
 
         res.json({
@@ -108,7 +111,13 @@ app.get('/download/:filename', async (req, res) => {
     
     try {
         await fs.access(filepath);
-        res.download(filepath);
+        
+        // 設定正確的 Content-Type 和 charset
+        res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+        res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`);
+        
+        const fileContent = await fs.readFile(filepath, 'utf8');
+        res.send(fileContent);
     } catch (error) {
         res.status(404).json({ error: '檔案不存在' });
     }
