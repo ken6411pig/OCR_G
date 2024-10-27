@@ -3,53 +3,44 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OCR 文字辨識</title>
+    <title>Google Cloud Vision OCR 文字辨識</title>
     <style>
-        body {
-            font-family: system-ui, -apple-system, sans-serif;
+        .container {
             max-width: 800px;
             margin: 0 auto;
             padding: 20px;
-            background-color: #f5f5f5;
-        }
-        .container {
-            background-color: white;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        .preview {
-            max-width: 100%;
-            margin: 20px 0;
-            display: none;
-        }
-        #result {
-            white-space: pre-wrap;
-            background-color: #f8f9fa;
-            padding: 15px;
-            border-radius: 4px;
-            margin-top: 20px;
         }
         .loading {
             display: none;
-            color: #666;
-            margin: 10px 0;
-        }
-        button {
-            background-color: #4CAF50;
-            color: white;
-            padding: 10px 20px;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            margin-top: 10px;
-        }
-        button:hover {
-            background-color: #45a049;
+            color: blue;
         }
         .error {
-            color: #dc3545;
-            margin-top: 10px;
+            display: none;
+            color: red;
+        }
+        .result-item {
+            margin: 10px 0;
+            padding: 10px;
+            border: 1px solid #ccc;
+        }
+        .file-list {
+            margin: 10px 0;
+        }
+        .download-link {
+            color: blue;
+            text-decoration: underline;
+            cursor: pointer;
+        }
+        #dropzone {
+            border: 2px dashed #ccc;
+            border-radius: 4px;
+            padding: 20px;
+            text-align: center;
+            margin: 20px 0;
+        }
+        #dropzone.dragover {
+            background-color: #e1e1e1;
+            border-color: #999;
         }
     </style>
 </head>
@@ -57,69 +48,125 @@
     <div class="container">
         <h1>Google Cloud Vision OCR 文字辨識</h1>
         
-        <div>
-            <input type="file" accept="image/*" id="fileInput">
-            <button onclick="analyzeImage()">開始辨識</button>
+        <div id="dropzone">
+            拖放圖片到這裡或點擊選擇檔案
+            <input type="file" id="fileInput" multiple accept="image/*" style="display: none;">
         </div>
-        <div class="loading" id="loading">處理中，請稍候...</div>
+        
+        <div id="fileList" class="file-list"></div>
+        
+        <button onclick="startAnalysis()" id="analyzeBtn" disabled>開始辨識</button>
+        
+        <div id="loading" class="loading">處理中，請稍候...</div>
         <div id="error" class="error"></div>
-        <img id="preview" class="preview">
         <div id="result"></div>
     </div>
+
     <script>
+        const dropzone = document.getElementById('dropzone');
         const fileInput = document.getElementById('fileInput');
-        const preview = document.getElementById('preview');
-        const result = document.getElementById('result');
+        const fileList = document.getElementById('fileList');
+        const analyzeBtn = document.getElementById('analyzeBtn');
         const loading = document.getElementById('loading');
         const error = document.getElementById('error');
+        const result = document.getElementById('result');
+        
+        let selectedFiles = [];
 
-        // 顯示預覽圖片
-        fileInput.addEventListener('change', (e) => {
-            const file = e.target.files[0];
-            if (file) {
-                const reader = new FileReader();
-                reader.onload = (e) => {
-                    preview.src = e.target.result;
-                    preview.style.display = 'block';
-                    result.textContent = '';
-                    error.textContent = '';
-                };
-                reader.readAsDataURL(file);
-            }
+        // 拖放功能
+        dropzone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropzone.classList.add('dragover');
         });
 
-        async function analyzeImage() {
-            if (!fileInput.files[0]) {
-                error.textContent = '請先選擇圖片';
-                return;
-            }
+        dropzone.addEventListener('dragleave', () => {
+            dropzone.classList.remove('dragover');
+        });
 
-            loading.style.display = 'block';
-            error.textContent = '';
-            result.textContent = '';
+        dropzone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropzone.classList.remove('dragover');
+            handleFiles(e.dataTransfer.files);
+        });
 
-            const formData = new FormData();
-            formData.append('image', fileInput.files[0]);
+        dropzone.addEventListener('click', () => {
+            fileInput.click();
+        });
 
+        fileInput.addEventListener('change', () => {
+            handleFiles(fileInput.files);
+        });
+
+        function handleFiles(files) {
+            selectedFiles = Array.from(files);
+            updateFileList();
+            analyzeBtn.disabled = selectedFiles.length === 0;
+        }
+
+        function updateFileList() {
+            fileList.innerHTML = selectedFiles.map(file => 
+                `<div>${file.name} (${(file.size / 1024).toFixed(1)} KB)</div>`
+            ).join('');
+        }
+
+        async function startAnalysis() {
             try {
-                const response = await fetch(`${window.location.origin}/analyze`, {
+                loading.style.display = 'block';
+                error.style.display = 'none';
+                result.innerHTML = '';
+                
+                const formData = new FormData();
+                selectedFiles.forEach(file => {
+                    formData.append('images', file);
+                });
+
+                const response = await fetch('/analyze', {
                     method: 'POST',
                     body: formData
                 });
 
                 if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
+                    throw new Error('上傳失敗');
                 }
 
                 const data = await response.json();
-                result.textContent = data.text || data.result?.textAnnotations?.[0]?.description || '未檢測到文字';
                 
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+
+                // 顯示結果
+                result.innerHTML = `
+                    <h3>辨識結果：</h3>
+                    ${data.results.map(item => `
+                        <div class="result-item">
+                            <strong>檔案：${item.filename}</strong><br>
+                            ${item.error 
+                                ? `<span style="color: red">錯誤：${item.error}</span>`
+                                : `<pre>${item.text}</pre>`
+                            }
+                            ${item.outputFile 
+                                ? `<a class="download-link" onclick="downloadFile('${item.outputFile}')">下載文字檔</a>`
+                                : ''
+                            }
+                        </div>
+                    `).join('')}
+                    <div style="margin-top: 20px">
+                        <strong>下載彙整檔案：</strong>
+                        <a class="download-link" onclick="downloadFile('${data.summaryFile}')">下載完整結果</a>
+                    </div>
+                `;
+
             } catch (err) {
-                error.textContent = '處理失敗: ' + err.message;
-                console.error('Error:', err);
+                error.textContent = '處理錯誤：' + err.message;
+                error.style.display = 'block';
             } finally {
                 loading.style.display = 'none';
             }
+        }
+
+        function downloadFile(filename) {
+            window.location.href = `/download/${filename}`;
         }
     </script>
 </body>
